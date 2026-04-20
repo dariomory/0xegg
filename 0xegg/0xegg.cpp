@@ -112,7 +112,7 @@ private:
 
 void PrintSplash() {
     std::cout << "----------------\n";
-    std::cout << "AUTOCLICKER v0.1\n";
+    std::cout << "0xegg v0.1.0\n";
     std::cout << "----------------\n";
 }
 
