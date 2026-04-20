@@ -62,9 +62,9 @@ public:
     }
 };
 
-class AutoClicker {
+class Egg {
 public:
-    explicit AutoClicker(IMouseInput* mouse) : mouse_(mouse) {}
+    explicit Egg(IMouseInput* mouse) : mouse_(mouse) {}
 
     void RepeatLeftClick(int count, int delayMs) {
         for (int i = 0; i < count; i++) {
@@ -149,7 +149,7 @@ int main() {
     const char *actions[5] = {"", "reads", "clicks", "clicks", "moves"};
 
     WindowsMouse winMouse;
-    AutoClicker  clicker(&winMouse);
+    Egg  clicker(&winMouse);
 
     PrintSplash();
 
