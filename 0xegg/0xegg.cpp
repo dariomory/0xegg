@@ -145,7 +145,7 @@ void CountDownGlobal(IMouseInput* mouse) {
 }
 
 int main() {
-    SetConsoleTitle("AutoClicker v0.1");
+    SetConsoleTitle("0xegg v0.1.0");
     const char *actions[5] = {"", "reads", "clicks", "clicks", "moves"};
 
     WindowsMouse winMouse;
