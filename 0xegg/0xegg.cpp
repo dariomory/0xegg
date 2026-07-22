@@ -1,156 +1,16 @@
 #include <iostream>
+#include <string>
+#include <vector>
 #include <windows.h>
+#include "InputDevice.h"
+#include "WindowsInput.h"
+#include "Humanizer.h"
+#include "Action.h"
+#include "Egg.h"
 
 #ifndef EGG_VERSION
 #define EGG_VERSION "dev"
 #endif
-
-class IMouseInput {
-public:
-    virtual ~IMouseInput() = default;
-
-    virtual void LeftClick()                          = 0;
-    virtual void RightClick()                         = 0;
-    virtual void MoveTo(int x, int y)                 = 0;
-    virtual void GetPosition(int& x, int& y)          = 0;
-    virtual void Wait(int ms)                         = 0;
-};
-
-class IKeyboardInput {
-public:
-    virtual ~IKeyboardInput() = default;
-
-    virtual void PressChar(char c)                    = 0;
-    virtual bool AbortRequested()                     = 0;
-};
-
-class WindowsMouse : public IMouseInput {
-public:
-    void LeftClick() override {
-        INPUT input = { 0 };
-        input.type          = INPUT_MOUSE;
-        input.mi.dwFlags    = MOUSEEVENTF_LEFTDOWN;
-        ::SendInput(1, &input, sizeof(input));
-
-        ::ZeroMemory(&input, sizeof(input));
-        input.type          = INPUT_MOUSE;
-        input.mi.dwFlags    = MOUSEEVENTF_LEFTUP;
-        ::SendInput(1, &input, sizeof(input));
-    }
-
-    void RightClick() override {
-        INPUT input = { 0 };
-        input.type          = INPUT_MOUSE;
-        input.mi.dwFlags    = MOUSEEVENTF_RIGHTDOWN;
-        ::SendInput(1, &input, sizeof(input));
-
-        ::ZeroMemory(&input, sizeof(input));
-        input.type          = INPUT_MOUSE;
-        input.mi.dwFlags    = MOUSEEVENTF_RIGHTUP;
-        ::SendInput(1, &input, sizeof(input));
-    }
-
-    void MoveTo(int x, int y) override {
-        double screenW = ::GetSystemMetrics(SM_CXSCREEN);
-        double screenH = ::GetSystemMetrics(SM_CYSCREEN);
-
-        INPUT input = { 0 };
-        input.type          = INPUT_MOUSE;
-        input.mi.dwFlags    = MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE;
-        input.mi.dx         = static_cast<LONG>(x * (65535.0 / screenW));
-        input.mi.dy         = static_cast<LONG>(y * (65535.0 / screenH));
-        ::SendInput(1, &input, sizeof(input));
-    }
-
-    void GetPosition(int& x, int& y) override {
-        POINT p;
-        ::GetCursorPos(&p);
-        x = p.x;
-        y = p.y;
-    }
-
-    void Wait(int ms) override {
-        ::Sleep(ms);
-    }
-};
-
-class WindowsKeyboard : public IKeyboardInput {
-public:
-    // Only characters reachable without a modifier are sent; others are ignored.
-    void PressChar(char c) override {
-        SHORT vk = ::VkKeyScanA(c);
-        if (vk == -1) return;
-
-        INPUT input = { 0 };
-        input.type          = INPUT_KEYBOARD;
-        input.ki.wVk        = static_cast<WORD>(vk & 0xFF);
-        ::SendInput(1, &input, sizeof(input));
-
-        input.ki.dwFlags    = KEYEVENTF_KEYUP;
-        ::SendInput(1, &input, sizeof(input));
-    }
-
-    // Polls the physical key state, so it works while another window has focus.
-    bool AbortRequested() override {
-        return (::GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
-    }
-};
-
-class Egg {
-public:
-    Egg(IMouseInput* mouse, IKeyboardInput* keyboard) : mouse_(mouse), keyboard_(keyboard) {}
-
-    void RepeatLeftClick(int count, int delayMs) {
-        for (int i = 0; i < count; i++) {
-            mouse_->LeftClick();
-            if (!WaitOrAbort(delayMs)) return;
-        }
-    }
-
-    void RepeatRightClick(int count, int delayMs) {
-        for (int i = 0; i < count; i++) {
-            mouse_->RightClick();
-            if (!WaitOrAbort(delayMs)) return;
-        }
-    }
-
-    void RepeatMoveTo(int x, int y, int count, int delayMs) {
-        for (int i = 0; i < count; i++) {
-            mouse_->MoveTo(x, y);
-            if (!WaitOrAbort(delayMs)) return;
-        }
-    }
-
-    void RepeatKeyPress(char key, int count, int delayMs) {
-        for (int i = 0; i < count; i++) {
-            keyboard_->PressChar(key);
-            if (!WaitOrAbort(delayMs)) return;
-        }
-    }
-
-    void ReadPositions(int count, int delayMs) {
-        int x, y;
-        for (int i = 0; i < count; i++) {
-            mouse_->GetPosition(x, y);
-            printf("X, Y: (%i, %i)\n", x, y);
-            if (!WaitOrAbort(delayMs)) return;
-        }
-    }
-
-private:
-    IMouseInput*    mouse_;
-    IKeyboardInput* keyboard_;
-
-    // Returns false once the user asks to stop, ending the current run.
-    bool WaitOrAbort(int delayMs) {
-        mouse_->Wait(delayMs);
-        if (keyboard_->AbortRequested()) {
-            std::cout << "Stopped.\n";
-            return false;
-        }
-        return true;
-    }
-};
 
 void PrintSplash() {
     std::cout << "----------------\n";
@@ -166,6 +26,7 @@ int AskMethod() {
     std::cout << "3) Left\n";
     std::cout << "4) Move to\n";
     std::cout << "5) Key press\n";
+    std::cout << "6) Sequence\n";
     std::cout << "Enter number:\n> ";
     std::cin >> choice;
     return choice;
@@ -176,6 +37,70 @@ void AskClickParams(const char* type, int& count, int& delayMs) {
     std::cin >> count;
     std::cout << "Wait between "<< type << " (ms): ";
     std::cin >> delayMs;
+}
+
+std::string AskHumanizationPreset() {
+    std::cout << "Humanization:\n";
+    std::cout << "0) Off    - exact, constant-speed, no jitter\n";
+    std::cout << "1) Subtle - light jitter and timing variance\n";
+    std::cout << "2) Human  - curved movement, jitter, variable timing\n";
+    std::cout << "Enter number:\n> ";
+    int choice = 0;
+    std::cin >> choice;
+    if (choice == 1) return "subtle";
+    if (choice == 2) return "human";
+    return "off";
+}
+
+// Stand-in for the JSON macro loader planned in issue #4 — both produce the
+// same std::vector<Action> for Egg::RunSequence to execute.
+std::vector<Action> BuildSequence() {
+    std::vector<Action> actions;
+    std::cout << "Build a sequence. Add steps one at a time; 0 finishes and runs it.\n";
+
+    while (true) {
+        std::cout << "\n1) Move to X,Y\n2) Left click\n3) Right click\n4) Type text\n5) Wait ms\n0) Done\n> ";
+        int step = 0;
+        std::cin >> step;
+
+        if (step == 0) break;
+
+        Action action;
+        char   yn = 'n';
+        switch (step) {
+        case 1:
+            action.type = ActionType::MoveTo;
+            std::cout << "X: ";  std::cin >> action.x;
+            std::cout << "Y: ";  std::cin >> action.y;
+            break;
+        case 2:
+            action.type = ActionType::LeftClick;
+            break;
+        case 3:
+            action.type = ActionType::RightClick;
+            break;
+        case 4:
+            action.type = ActionType::Type;
+            std::cin.ignore();
+            std::cout << "Text: ";  std::getline(std::cin, action.text);
+            std::cout << "Delay between keystrokes (ms): ";  std::cin >> action.ms;
+            std::cout << "Press Enter afterwards? (y/n): ";  std::cin >> yn;
+            if (yn == 'y' || yn == 'Y') action.text += '\r';
+            break;
+        case 5:
+            action.type = ActionType::Wait;
+            std::cout << "Wait (ms): ";  std::cin >> action.ms;
+            break;
+        default:
+            std::cout << "Invalid step.\n";
+            continue;
+        }
+
+        actions.push_back(action);
+        std::cout << "Added. " << actions.size() << " step(s) so far.\n";
+    }
+
+    return actions;
 }
 
 void CountDown(IMouseInput* mouse) {
@@ -193,9 +118,14 @@ int main() {
 
     WindowsMouse    winMouse;
     WindowsKeyboard winKeyboard;
-    Egg  clicker(&winMouse, &winKeyboard);
 
     PrintSplash();
+
+    // Always wrapped: with the "off" preset every Humanizer override is a plain
+    // passthrough, so this adds no behavior change unless a preset is chosen.
+    HumanizationConfig config = HumanizationPreset(AskHumanizationPreset());
+    Humanizer humanizer(&winMouse, &winKeyboard, config);
+    Egg       clicker(&humanizer, &humanizer);
 
     int method   = 0;
     int count    = 0;
@@ -205,6 +135,23 @@ int main() {
         method = AskMethod();
 
         if (method == 0) break;
+
+        if (method == 6) {
+            std::vector<Action> sequence = BuildSequence();
+            if (sequence.empty()) {
+                std::cout << "Empty sequence, nothing to run.\n";
+                continue;
+            }
+
+            int repeatCount = 1;
+            std::cout << "Repeat sequence how many times? ";  std::cin >> repeatCount;
+
+            CountDown(&winMouse);
+            std::cout << "Press ESC to stop.\n";
+            clicker.RunSequence(sequence, repeatCount);
+            continue;
+        }
+
         if (method < 1 || method > 5) {
             std::cout << "Invalid option.\n";
             continue;
