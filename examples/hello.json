@@ -1,0 +1,12 @@
+{
+  "name": "hello example",
+  "repeat": 1,
+  "humanization": "human",
+  "maxRuntimeMs": 60000,
+  "actions": [
+    { "type": "wait", "ms": 500 },
+    { "type": "move", "x": 800, "y": 500 },
+    { "type": "click", "button": "left" },
+    { "type": "type", "text": "hello", "msPerChar": 40, "pressEnter": true }
+  ]
+}

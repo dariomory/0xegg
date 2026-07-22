@@ -7,6 +7,7 @@
 #include "Humanizer.h"
 #include "Action.h"
 #include "Egg.h"
+#include "MacroLoader.h"
 
 #ifndef EGG_VERSION
 #define EGG_VERSION "dev"
@@ -27,6 +28,7 @@ int AskMethod() {
     std::cout << "4) Move to\n";
     std::cout << "5) Key press\n";
     std::cout << "6) Sequence\n";
+    std::cout << "7) Load macro\n";
     std::cout << "Enter number:\n> ";
     std::cin >> choice;
     return choice;
@@ -149,6 +151,35 @@ int main() {
             CountDown(&winMouse);
             std::cout << "Press ESC to stop.\n";
             clicker.RunSequence(sequence, repeatCount);
+            continue;
+        }
+
+        if (method == 7) {
+            std::cout << "Macro file path: ";
+            std::string path;
+            std::cin >> path;
+
+            try {
+                Macro macro = LoadMacroFromFile(path);
+                if (macro.actions.empty()) {
+                    std::cout << "Macro has no actions.\n";
+                    continue;
+                }
+
+                HumanizationConfig macroConfig = HumanizationPreset(macro.humanization);
+                Humanizer          macroHumanizer(&winMouse, &winKeyboard, macroConfig);
+                Egg                macroClicker(&macroHumanizer, &macroHumanizer);
+
+                std::cout << "Loaded \"" << macro.name << "\": " << macro.actions.size()
+                          << " action(s), repeat " << macro.repeat << "x, humanization: "
+                          << macro.humanization << "\n";
+
+                CountDown(&winMouse);
+                std::cout << "Press ESC to stop.\n";
+                macroClicker.RunSequence(macro.actions, macro.repeat, macro.maxRuntimeMs);
+            } catch (const std::exception& e) {
+                std::cout << "Failed to load macro: " << e.what() << "\n";
+            }
             continue;
         }
 
