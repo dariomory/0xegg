@@ -1,6 +1,10 @@
 #include <iostream>
 #include <windows.h>
 
+#ifndef EGG_VERSION
+#define EGG_VERSION "dev"
+#endif
+
 class IMouseInput {
 public:
     virtual ~IMouseInput() = default;
@@ -10,6 +14,14 @@ public:
     virtual void MoveTo(int x, int y)                 = 0;
     virtual void GetPosition(int& x, int& y)          = 0;
     virtual void Wait(int ms)                         = 0;
+};
+
+class IKeyboardInput {
+public:
+    virtual ~IKeyboardInput() = default;
+
+    virtual void PressChar(char c)                    = 0;
+    virtual bool AbortRequested()                     = 0;
 };
 
 class WindowsMouse : public IMouseInput {
@@ -62,57 +74,87 @@ public:
     }
 };
 
+class WindowsKeyboard : public IKeyboardInput {
+public:
+    // Only characters reachable without a modifier are sent; others are ignored.
+    void PressChar(char c) override {
+        SHORT vk = ::VkKeyScanA(c);
+        if (vk == -1) return;
+
+        INPUT input = { 0 };
+        input.type          = INPUT_KEYBOARD;
+        input.ki.wVk        = static_cast<WORD>(vk & 0xFF);
+        ::SendInput(1, &input, sizeof(input));
+
+        input.ki.dwFlags    = KEYEVENTF_KEYUP;
+        ::SendInput(1, &input, sizeof(input));
+    }
+
+    // Polls the physical key state, so it works while another window has focus.
+    bool AbortRequested() override {
+        return (::GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+    }
+};
+
 class Egg {
 public:
-    explicit Egg(IMouseInput* mouse) : mouse_(mouse) {}
+    Egg(IMouseInput* mouse, IKeyboardInput* keyboard) : mouse_(mouse), keyboard_(keyboard) {}
 
     void RepeatLeftClick(int count, int delayMs) {
         for (int i = 0; i < count; i++) {
             mouse_->LeftClick();
-            mouse_->Wait(delayMs);
+            if (!WaitOrAbort(delayMs)) return;
         }
     }
 
     void RepeatRightClick(int count, int delayMs) {
         for (int i = 0; i < count; i++) {
             mouse_->RightClick();
-            mouse_->Wait(delayMs);
+            if (!WaitOrAbort(delayMs)) return;
         }
     }
 
     void RepeatMoveTo(int x, int y, int count, int delayMs) {
         for (int i = 0; i < count; i++) {
             mouse_->MoveTo(x, y);
-            mouse_->Wait(delayMs);
+            if (!WaitOrAbort(delayMs)) return;
+        }
+    }
+
+    void RepeatKeyPress(char key, int count, int delayMs) {
+        for (int i = 0; i < count; i++) {
+            keyboard_->PressChar(key);
+            if (!WaitOrAbort(delayMs)) return;
         }
     }
 
     void ReadPositions(int count, int delayMs) {
         int x, y;
         for (int i = 0; i < count; i++) {
-            CountDown();
             mouse_->GetPosition(x, y);
             printf("X, Y: (%i, %i)\n", x, y);
-            mouse_->Wait(delayMs);
+            if (!WaitOrAbort(delayMs)) return;
         }
     }
 
 private:
-    IMouseInput* mouse_;
+    IMouseInput*    mouse_;
+    IKeyboardInput* keyboard_;
 
-    void CountDown() {
-        std::cout << "Starting in 3 seconds...\n";
-        mouse_->Wait(1000);
-        std::cout << "2..\n";
-        mouse_->Wait(1000);
-        std::cout << "1..\n";
-        mouse_->Wait(1000);
+    // Returns false once the user asks to stop, ending the current run.
+    bool WaitOrAbort(int delayMs) {
+        mouse_->Wait(delayMs);
+        if (keyboard_->AbortRequested()) {
+            std::cout << "Stopped.\n";
+            return false;
+        }
+        return true;
     }
 };
 
 void PrintSplash() {
     std::cout << "----------------\n";
-    std::cout << "0xegg v0.1.0\n";
+    std::cout << "0xegg v" EGG_VERSION "\n";
     std::cout << "----------------\n";
 }
 
@@ -123,6 +165,7 @@ int AskMethod() {
     std::cout << "2) Right\n";
     std::cout << "3) Left\n";
     std::cout << "4) Move to\n";
+    std::cout << "5) Key press\n";
     std::cout << "Enter number:\n> ";
     std::cin >> choice;
     return choice;
@@ -135,7 +178,7 @@ void AskClickParams(const char* type, int& count, int& delayMs) {
     std::cin >> delayMs;
 }
 
-void CountDownGlobal(IMouseInput* mouse) {
+void CountDown(IMouseInput* mouse) {
     std::cout << "Starting in 3 seconds...\n";
     mouse->Wait(1000);
     std::cout << "2..\n";
@@ -145,11 +188,12 @@ void CountDownGlobal(IMouseInput* mouse) {
 }
 
 int main() {
-    SetConsoleTitle("0xegg v0.1.0");
-    const char *actions[5] = {"", "reads", "clicks", "clicks", "moves"};
+    SetConsoleTitleA("0xegg v" EGG_VERSION);
+    const char *actions[6] = {"", "reads", "clicks", "clicks", "moves", "presses"};
 
-    WindowsMouse winMouse;
-    Egg  clicker(&winMouse);
+    WindowsMouse    winMouse;
+    WindowsKeyboard winKeyboard;
+    Egg  clicker(&winMouse, &winKeyboard);
 
     PrintSplash();
 
@@ -161,10 +205,25 @@ int main() {
         method = AskMethod();
 
         if (method == 0) break;
-        if (method >= 1 && method <= 4) {
-            AskClickParams(actions[method], count, delayMs);
-            CountDownGlobal(&winMouse);
+        if (method < 1 || method > 5) {
+            std::cout << "Invalid option.\n";
+            continue;
         }
+
+        AskClickParams(actions[method], count, delayMs);
+
+        int  x   = 0;
+        int  y   = 0;
+        char key = 0;
+        if (method == 4) {
+            std::cout << "Enter X position: ";  std::cin >> x;
+            std::cout << "Enter Y position: ";  std::cin >> y;
+        } else if (method == 5) {
+            std::cout << "Enter key to press: ";  std::cin >> key;
+        }
+
+        CountDown(&winMouse);
+        std::cout << "Press ESC to stop.\n";
 
         switch (method) {
         case 1:
@@ -176,15 +235,11 @@ int main() {
         case 3:
             clicker.RepeatLeftClick(count, delayMs);
             break;
-        case 4: {
-            int x, y;
-            std::cout << "Enter X position: ";  std::cin >> x;
-            std::cout << "Enter Y position: ";  std::cin >> y;
+        case 4:
             clicker.RepeatMoveTo(x, y, count, delayMs);
             break;
-        }
-        default:
-            std::cout << "Invalid option.\n";
+        case 5:
+            clicker.RepeatKeyPress(key, count, delayMs);
             break;
         }
     }
