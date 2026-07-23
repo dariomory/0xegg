@@ -94,6 +94,10 @@ $tf/
 # Guidance Automation Toolkit
 *.gpState
 
+# Dear ImGui (disabled in-app via io.IniFilename = nullptr, but ignore stray ones)
+imgui.ini
+window_position.txt
+
 # CMake
 CMakeCache.txt
 CMakeFiles/

@@ -1,10 +1,8 @@
 ## 0xegg
 
-![Preview](preview.png)
-
 ## Building
 
-Requires CMake 3.10+ and a C++17 compiler. Windows only — the tool is built on the Win32 `SendInput` API.
+Requires CMake 3.10+ and a C++17 compiler. Windows only the tool is built on the Win32 `SendInput` API.
 
 ```sh
 cmake -B build

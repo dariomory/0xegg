@@ -1,2 +1,5 @@
 // Resource id 1 makes this the application icon shown by Explorer.
 1 ICON "egg.ico"
+
+// Raw PNG bytes for the in-UI title bar icon (GUI decodes this itself; Explorer/taskbar use the .ico above).
+2 RCDATA "icon.png"

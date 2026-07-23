@@ -41,6 +41,59 @@ inline Action ParseAction(const nlohmann::json& item) {
     return action;
 }
 
+inline nlohmann::json ActionToJson(const Action& action) {
+    nlohmann::json j;
+    switch (action.type) {
+    case ActionType::MoveTo:
+        j["type"] = "move";
+        j["x"]    = action.x;
+        j["y"]    = action.y;
+        break;
+    case ActionType::LeftClick:
+        j["type"]   = "click";
+        j["button"] = "left";
+        break;
+    case ActionType::RightClick:
+        j["type"]   = "click";
+        j["button"] = "right";
+        break;
+    case ActionType::Wait:
+        j["type"] = "wait";
+        j["ms"]   = action.ms;
+        break;
+    case ActionType::Type: {
+        std::string text = action.text;
+        bool pressEnter = !text.empty() && text.back() == '\r';
+        if (pressEnter) text.pop_back();
+
+        j["type"]        = "type";
+        j["text"]        = text;
+        j["msPerChar"]   = action.ms;
+        j["pressEnter"]  = pressEnter;
+        break;
+    }
+    }
+    return j;
+}
+
+// Symmetric with LoadMacroFromFile: writes the same schema it reads, so a
+// recorded or hand-built Macro can round-trip through save/load unchanged.
+inline void SaveMacroToFile(const Macro& macro, const std::string& path) {
+    nlohmann::json j;
+    j["name"]         = macro.name;
+    j["repeat"]        = macro.repeat;
+    j["humanization"]  = macro.humanization;
+    j["maxRuntimeMs"]  = macro.maxRuntimeMs;
+
+    nlohmann::json actions = nlohmann::json::array();
+    for (const Action& action : macro.actions) actions.push_back(ActionToJson(action));
+    j["actions"] = actions;
+
+    std::ofstream out(path);
+    if (!out) throw std::runtime_error("could not write macro file: " + path);
+    out << j.dump(2);
+}
+
 inline Macro LoadMacroFromFile(const std::string& path) {
     std::ifstream file(path);
     if (!file) throw std::runtime_error("could not open macro file: " + path);
